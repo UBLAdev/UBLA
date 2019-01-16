@@ -18,4 +18,7 @@
         </activity>
     </application>
 
+    // added for use of maps api
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
 </manifest>
