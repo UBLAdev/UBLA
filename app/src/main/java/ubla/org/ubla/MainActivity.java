@@ -5,10 +5,21 @@ import android.support.annotation.NonNull;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.View;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.TextView;
 
 import com.mapbox.android.core.permissions.PermissionsListener;
 import com.mapbox.android.core.permissions.PermissionsManager;
+import com.mapbox.api.geocoding.v5.MapboxGeocoding;
+import com.mapbox.api.geocoding.v5.models.CarmenFeature;
+import com.mapbox.api.geocoding.v5.models.GeocodingResponse;
+import com.mapbox.geojson.Point;
 import com.mapbox.mapboxsdk.Mapbox;
+import com.mapbox.mapboxsdk.camera.CameraPosition;
+import com.mapbox.mapboxsdk.camera.CameraUpdateFactory;
+import com.mapbox.mapboxsdk.geometry.LatLng;
 import com.mapbox.mapboxsdk.location.LocationComponent;
 import com.mapbox.mapboxsdk.location.modes.CameraMode;
 import com.mapbox.mapboxsdk.location.modes.RenderMode;
@@ -16,8 +27,13 @@ import com.mapbox.mapboxsdk.maps.MapView;
 import com.mapbox.mapboxsdk.maps.MapboxMap;
 import com.mapbox.mapboxsdk.maps.OnMapReadyCallback;
 import com.mapbox.mapboxsdk.maps.Style;
+import com.mapbox.services.android.navigation.v5.navigation.MapboxNavigation;
 
 import java.util.List;
+
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
 
 public class MainActivity extends AppCompatActivity implements OnMapReadyCallback, PermissionsListener, Style.OnStyleLoaded {
 
@@ -33,8 +49,16 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     // LocationComponent stuff
     LocationComponent locationComponent;
 
+    // Navigation stuff
+    MapboxNavigation mapboxNavigation;
+
     // Permission Stuff
     private PermissionsManager permissionsManager;
+
+    // UI elements
+    Button startRouteButton;
+    EditText originEditText;
+    EditText destinationEditText;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -52,6 +76,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         mapView = findViewById(R.id.mapView);
         mapView.onCreate(savedInstanceState);
         mapView.getMapAsync(this);
+
+        // set up UI elements
+        startRouteButton = (Button) findViewById(R.id.startRouteButton);
+        originEditText = (EditText) findViewById(R.id.originEditText);
+        destinationEditText = (EditText) findViewById(R.id.destinationEditText);
     }
 
     // ---------- Handle Permission Stuff ---------- //
@@ -140,12 +169,83 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         initLocationComponent();
     }
 
-    // ---------- AppCompatActivity Lifecycle Callbacks implementation ---------- //
-
     @Override
     public void onStart() {
         super.onStart();
         mapView.onStart();
+
+        // Register UI Callbacks
+        startRouteButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (originEditText.getText().length() > 3 && destinationEditText.getText().length() > 3) {
+                    showRoute();
+                } else {
+                    Log.e(TAG, "input too short, must be min 4 chard each.");
+                }
+            }
+        });
+    }
+
+    private void showRoute() {
+        Point origin;
+        Point destination;
+
+        origin = getOriginPoint();
+        destination = getDestinationPoint();
+    }
+
+    private Point getOriginPoint() {
+        final Point[] origin = new Point[1];
+        MapboxGeocoding originMapboxGeocoding;
+
+        // set up request
+        originMapboxGeocoding = MapboxGeocoding.builder()
+                .accessToken("pk.eyJ1IjoidWJsYSIsImEiOiJjanF6dHJvd3EwaTdpNDNvMDlydHRzOHVhIn0.yf8AdRE2gR9NH80fSYZjBA")
+                .query(originEditText.getText().toString())
+                .build();
+
+        // TODO: refactor Callback!
+        // enqueue request
+        originMapboxGeocoding.enqueueCall(new Callback<GeocodingResponse>() {
+            @Override
+            public void onResponse(Call<GeocodingResponse> call, Response<GeocodingResponse> response) {
+                List<CarmenFeature> results = response.body().features();
+
+                // check for results
+                if (results.size() > 0) {
+                    // Log first result Point
+                    Point firstResultPoint = results.get(0).center();
+                    Log.i(TAG, "onresponse returned " + firstResultPoint.toString());
+                    origin[0] = firstResultPoint;
+
+                    // for test
+                    // TODO: remove
+                    mapboxMap.animateCamera(CameraUpdateFactory.newCameraPosition(new CameraPosition.Builder()
+                                .target(new LatLng(firstResultPoint.latitude(), firstResultPoint.longitude()))
+                                .zoom(15)
+                                .tilt(20)
+                                .build())
+                            , 1000);
+                } else {
+                    Log.e(TAG, "no results were found.");
+                }
+            }
+
+            @Override
+            public void onFailure(Call<GeocodingResponse> call, Throwable t) {
+                // print stack trace
+                t.printStackTrace();
+            }
+        });
+
+        return origin[0];
+    }
+
+    private Point getDestinationPoint() {
+        Point destination = null;
+
+        return destination;
     }
 
     @Override
