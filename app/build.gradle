@@ -34,4 +34,6 @@ dependencies {
     // [changed] added for maps sdk usage
     implementation 'com.mapbox.mapboxsdk:mapbox-android-sdk:7.0.0'
 
+    // [changed] added for device location stuff
+    implementation 'com.mapbox.mapboxsdk:mapbox-android-core:1.1.0'
 }
