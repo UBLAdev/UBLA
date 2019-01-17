@@ -12,9 +12,16 @@ import android.widget.TextView;
 
 import com.mapbox.android.core.permissions.PermissionsListener;
 import com.mapbox.android.core.permissions.PermissionsManager;
+import com.mapbox.api.directions.v5.DirectionsCriteria;
+import com.mapbox.api.directions.v5.MapboxDirections;
+import com.mapbox.api.directions.v5.models.DirectionsResponse;
+import com.mapbox.api.directions.v5.models.DirectionsRoute;
 import com.mapbox.api.geocoding.v5.MapboxGeocoding;
 import com.mapbox.api.geocoding.v5.models.CarmenFeature;
 import com.mapbox.api.geocoding.v5.models.GeocodingResponse;
+import com.mapbox.geojson.Feature;
+import com.mapbox.geojson.FeatureCollection;
+import com.mapbox.geojson.LineString;
 import com.mapbox.geojson.Point;
 import com.mapbox.mapboxsdk.Mapbox;
 import com.mapbox.mapboxsdk.location.LocationComponent;
@@ -24,6 +31,7 @@ import com.mapbox.mapboxsdk.maps.MapView;
 import com.mapbox.mapboxsdk.maps.MapboxMap;
 import com.mapbox.mapboxsdk.maps.OnMapReadyCallback;
 import com.mapbox.mapboxsdk.maps.Style;
+import com.mapbox.mapboxsdk.style.sources.GeoJsonSource;
 import com.mapbox.services.android.navigation.v5.navigation.MapboxNavigation;
 
 import java.util.List;
@@ -32,10 +40,25 @@ import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
 
+import static com.mapbox.core.constants.Constants.PRECISION_6;
+import static com.mapbox.mapboxsdk.style.layers.PropertyFactory.iconIgnorePlacement;
+import static com.mapbox.mapboxsdk.style.layers.PropertyFactory.iconImage;
+import static com.mapbox.mapboxsdk.style.layers.PropertyFactory.lineCap;
+import static com.mapbox.mapboxsdk.style.layers.PropertyFactory.lineColor;
+import static com.mapbox.mapboxsdk.style.layers.PropertyFactory.lineJoin;
+import static com.mapbox.mapboxsdk.style.layers.PropertyFactory.lineWidth;
+
+
 public class MainActivity extends AppCompatActivity implements OnMapReadyCallback, PermissionsListener, Style.OnStyleLoaded {
 
     // Constants
     private static final String TAG = "MainActivity";
+    // TODO: customize?!?
+    private static final String ROUTE_LAYER_ID = "route-layer-id";
+    private static final String ROUTE_SOURCE_ID = "route-source-id";
+    private static final String ICON_LAYER_ID = "icon-layer-id";
+    private static final String ICON_SOURCE_ID = "icon-source-id";
+    private static final String RED_PIN_ICON_ID = "red-pin-icon-id";
 
     // MapView Object
     private MapView mapView;
@@ -50,6 +73,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private MapboxNavigation mapboxNavigation;
     private Point origin;
     private Point destination;
+    private DirectionsRoute currentRoute;
+    private Feature directionsRouteFeature;
+    private Boolean isOriginSet = false;
+    private Boolean isDestinationSet = false;
 
     // Permission Stuff
     private PermissionsManager permissionsManager;
@@ -75,6 +102,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         mapView = findViewById(R.id.mapView);
         mapView.onCreate(savedInstanceState);
         mapView.getMapAsync(this);
+
+        // customize the map for Routes
+        initSource();
+        initLayer();
 
         // set up UI elements
         startRouteButton = (Button) findViewById(R.id.startRouteButton);
@@ -178,7 +209,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             @Override
             public void onClick(View v) {
                 if (originEditText.getText().length() > 3 && destinationEditText.getText().length() > 3) {
-                    prepareRoute();
+                    showRoute();
                 } else {
                     Log.e(TAG, "input too short, must be min 4 chard each.");
                 }
@@ -188,12 +219,17 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     // ---------- Route Stuff ---------- //
 
-    private void prepareRoute() {
-        convertOriginStringToPoint();
+    private void showRoute() {
+        convertAdressesToPoints();
+        // createRouteFromPoints(); // TODO: proper MVC shit.
+        // drawRoute();             // TODO: very(!!) ugly jumping around shit
     }
 
-    private void showRoute(){
-        Log.i(TAG, origin.toString() + " : " + destination.toString());
+    //// ---------- convert Addresses to Points ---------- ////
+
+    private void convertAdressesToPoints() {
+        convertOriginStringToPoint();
+        convertDestinationStringToPoint();
     }
 
     private void convertOriginStringToPoint() {
@@ -211,15 +247,21 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         originMapboxGeocoding.enqueueCall(new Callback<GeocodingResponse>() {
             @Override
             public void onResponse(Call<GeocodingResponse> call, Response<GeocodingResponse> response) {
+
                 List<CarmenFeature> results = response.body().features();
 
                 // check for results
                 if (results.size() > 0) {
                     // Log first result Point
                     Point firstResultPoint = results.get(0).center();
-                    Log.i(TAG, "onresponse returned " + firstResultPoint.toString());
                     origin = firstResultPoint;
-                    convertDestinationStringToPoint();
+                    isOriginSet = true;
+                    if (isDestinationSet) {
+                        createRouteFromPoints();
+                        isOriginSet = false;
+                        isDestinationSet = false;
+                    }
+                    Log.i(TAG, "onresponse returned " + firstResultPoint.toString());
                 } else {
                     Log.e(TAG, "no results were found.");
                 }
@@ -254,9 +296,14 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 if (results.size() > 0) {
                     // Log first result Point
                     Point firstResultPoint = results.get(0).center();
-                    Log.i(TAG, "onresponse returned " + firstResultPoint.toString());
                     destination = firstResultPoint;
-                    showRoute();
+                    isDestinationSet = true;
+                    if (isOriginSet) {
+                        createRouteFromPoints();
+                        isOriginSet = false;
+                        isDestinationSet = false;
+                    }
+                    Log.i(TAG, "onresponse returned " + firstResultPoint.toString());
                 } else {
                     Log.e(TAG, "no results were found.");
                 }
@@ -268,6 +315,58 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 t.printStackTrace();
             }
         });
+    }
+
+    //// ---------- create route from Points---------- ////
+
+    private void createRouteFromPoints() {
+        Log.i(TAG, origin.toString() + " : " + destination.toString());
+
+        // build Directions request
+        MapboxDirections mapboxDirectionsClient = MapboxDirections.builder()
+                .origin(origin)
+                .destination(destination)
+                .overview(DirectionsCriteria.OVERVIEW_FULL)
+                .profile(DirectionsCriteria.PROFILE_DRIVING)
+                .accessToken("pk.eyJ1IjoidWJsYSIsImEiOiJjanF6dHJvd3EwaTdpNDNvMDlydHRzOHVhIn0.yf8AdRE2gR9NH80fSYZjBA")
+                .build();
+
+        // send request and handling response
+        mapboxDirectionsClient.enqueueCall(new Callback<DirectionsResponse>() {
+            @Override
+            public void onResponse(Call<DirectionsResponse> call, Response<DirectionsResponse> response) {
+                if (response.body() == null) {
+                    Log.e(TAG, "no routes found, something is wrong (response.body == null).");
+                } else if (response.body().routes().size() < 1) {
+                    Log.e(TAG, "no routes found.");
+                }
+
+                // retrive route from response
+                currentRoute = response.body().routes().get(0);
+
+                drawRoute();
+            }
+
+            @Override
+            public void onFailure(Call<DirectionsResponse> call, Throwable t) {
+                t.printStackTrace();
+            }
+        });
+    }
+
+    //// ---------- draw route---------- ////
+
+    private void drawRoute() {
+        directionsRouteFeature = Feature.fromGeometry(LineString.fromPolyline(currentRoute.geometry(), PRECISION_6));
+        Log.i(TAG, isOriginSet.toString() + " " + isDestinationSet + " " + currentRoute.toString());
+    }
+
+    private void initSource() {
+
+    }
+
+    private void initLayer() {
+
     }
 
     @Override
