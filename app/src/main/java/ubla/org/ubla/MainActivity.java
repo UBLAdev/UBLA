@@ -69,7 +69,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         if (granted) {
             // TODO: LocationComponent must be called here
         } else {
-            Log.e(TAG, "User has not granted permissions.";
+            Log.e(TAG, "User has not granted permissions.");
         }
     }
 
