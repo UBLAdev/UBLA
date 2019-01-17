@@ -31,7 +31,10 @@ dependencies {
     androidTestImplementation 'com.android.support.test.espresso:espresso-core:3.0.2'
     implementation 'com.google.android.gms:play-services-maps:16.0.0'
 
-    // [changed] added for maps sdk usage
+    // [changed] added for mapbox sdk usage
     implementation 'com.mapbox.mapboxsdk:mapbox-android-sdk:7.0.0'
+
+    // [changed] added for device location stuff
+    implementation 'com.mapbox.mapboxsdk:mapbox-android-core:1.1.0'
 
 }
