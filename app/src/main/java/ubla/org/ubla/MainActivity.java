@@ -8,7 +8,6 @@ import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
-import android.widget.TextView;
 
 import com.mapbox.android.core.permissions.PermissionsListener;
 import com.mapbox.android.core.permissions.PermissionsManager;
@@ -16,11 +15,7 @@ import com.mapbox.api.directions.v5.DirectionsCriteria;
 import com.mapbox.api.directions.v5.MapboxDirections;
 import com.mapbox.api.directions.v5.models.DirectionsResponse;
 import com.mapbox.api.directions.v5.models.DirectionsRoute;
-import com.mapbox.api.geocoding.v5.MapboxGeocoding;
-import com.mapbox.api.geocoding.v5.models.CarmenFeature;
-import com.mapbox.api.geocoding.v5.models.GeocodingResponse;
 import com.mapbox.geojson.Feature;
-import com.mapbox.geojson.FeatureCollection;
 import com.mapbox.geojson.LineString;
 import com.mapbox.geojson.Point;
 import com.mapbox.mapboxsdk.Mapbox;
@@ -31,34 +26,26 @@ import com.mapbox.mapboxsdk.maps.MapView;
 import com.mapbox.mapboxsdk.maps.MapboxMap;
 import com.mapbox.mapboxsdk.maps.OnMapReadyCallback;
 import com.mapbox.mapboxsdk.maps.Style;
-import com.mapbox.mapboxsdk.style.sources.GeoJsonSource;
 import com.mapbox.services.android.navigation.v5.navigation.MapboxNavigation;
 
 import java.util.List;
+import java.util.Map;
 
 import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
 
 import static com.mapbox.core.constants.Constants.PRECISION_6;
-import static com.mapbox.mapboxsdk.style.layers.PropertyFactory.iconIgnorePlacement;
-import static com.mapbox.mapboxsdk.style.layers.PropertyFactory.iconImage;
-import static com.mapbox.mapboxsdk.style.layers.PropertyFactory.lineCap;
-import static com.mapbox.mapboxsdk.style.layers.PropertyFactory.lineColor;
-import static com.mapbox.mapboxsdk.style.layers.PropertyFactory.lineJoin;
-import static com.mapbox.mapboxsdk.style.layers.PropertyFactory.lineWidth;
 
-
-public class MainActivity extends AppCompatActivity implements OnMapReadyCallback, PermissionsListener, Style.OnStyleLoaded {
+public class MainActivity extends AppCompatActivity implements
+        OnMapReadyCallback,
+        PermissionsListener,
+        Style.OnStyleLoaded,
+        OnAdressConverted,
+        OnRouteCreated {
 
     // Constants
     private static final String TAG = "MainActivity";
-    // TODO: customize?!?
-    private static final String ROUTE_LAYER_ID = "route-layer-id";
-    private static final String ROUTE_SOURCE_ID = "route-source-id";
-    private static final String ICON_LAYER_ID = "icon-layer-id";
-    private static final String ICON_SOURCE_ID = "icon-source-id";
-    private static final String RED_PIN_ICON_ID = "red-pin-icon-id";
 
     // MapView Object
     private MapView mapView;
@@ -218,140 +205,60 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     // ---------- Route Stuff ---------- //
+    // TODO: still cascading weirdly
 
     private void showRoute() {
         convertAdressesToPoints();
-        // createRouteFromPoints(); // TODO: proper MVC shit.
-        // drawRoute();             // TODO: very(!!) ugly jumping around shit
     }
 
     //// ---------- convert Addresses to Points ---------- ////
 
     private void convertAdressesToPoints() {
-        convertOriginStringToPoint();
-        convertDestinationStringToPoint();
+
+        // clear old points if there are
+        origin = null;
+        destination = null;
+
+        // start AsyncTasks to call Mapbox API asynchronously
+        ConvertOriginAsyncTask convertOriginAsyncTask =
+                new ConvertOriginAsyncTask(this, originEditText.getText().toString());
+        ConvertDestinationAsyncTask convertDestinationAsyncTask =
+                new ConvertDestinationAsyncTask(this, destinationEditText.getText().toString());
+
+        convertOriginAsyncTask.execute();
+        convertDestinationAsyncTask.execute();
     }
 
-    private void convertOriginStringToPoint() {
-
-        MapboxGeocoding originMapboxGeocoding;
-
-        // set up request
-        originMapboxGeocoding = MapboxGeocoding.builder()
-                .accessToken("pk.eyJ1IjoidWJsYSIsImEiOiJjanF6dHJvd3EwaTdpNDNvMDlydHRzOHVhIn0.yf8AdRE2gR9NH80fSYZjBA")
-                .query(originEditText.getText().toString())
-                .build();
-
-        // TODO: refactor Callback!
-        // enqueue request
-        originMapboxGeocoding.enqueueCall(new Callback<GeocodingResponse>() {
-            @Override
-            public void onResponse(Call<GeocodingResponse> call, Response<GeocodingResponse> response) {
-
-                List<CarmenFeature> results = response.body().features();
-
-                // check for results
-                if (results.size() > 0) {
-                    // Log first result Point
-                    Point firstResultPoint = results.get(0).center();
-                    origin = firstResultPoint;
-                    isOriginSet = true;
-                    if (isDestinationSet) {
-                        createRouteFromPoints();
-                        isOriginSet = false;
-                        isDestinationSet = false;
-                    }
-                    Log.i(TAG, "onresponse returned " + firstResultPoint.toString());
-                } else {
-                    Log.e(TAG, "no results were found.");
-                }
-            }
-
-            @Override
-            public void onFailure(Call<GeocodingResponse> call, Throwable t) {
-                // print stack trace
-                t.printStackTrace();
-            }
-        });
+    @Override
+    public void onOriginConverted(Point point) {
+        Log.i(TAG, point.toString());
+        origin = point;
+        if (destination != null) {
+            createRouteFromPoints();
+        }
     }
 
-    private void convertDestinationStringToPoint() {
-
-        MapboxGeocoding destinationMapboxGeocoding;
-
-        // set up request
-        destinationMapboxGeocoding = MapboxGeocoding.builder()
-                .accessToken("pk.eyJ1IjoidWJsYSIsImEiOiJjanF6dHJvd3EwaTdpNDNvMDlydHRzOHVhIn0.yf8AdRE2gR9NH80fSYZjBA")
-                .query(destinationEditText.getText().toString())
-                .build();
-
-        // TODO: refactor Callback!
-        // enqueue request
-        destinationMapboxGeocoding.enqueueCall(new Callback<GeocodingResponse>() {
-            @Override
-            public void onResponse(Call<GeocodingResponse> call, Response<GeocodingResponse> response) {
-                List<CarmenFeature> results = response.body().features();
-
-                // check for results
-                if (results.size() > 0) {
-                    // Log first result Point
-                    Point firstResultPoint = results.get(0).center();
-                    destination = firstResultPoint;
-                    isDestinationSet = true;
-                    if (isOriginSet) {
-                        createRouteFromPoints();
-                        isOriginSet = false;
-                        isDestinationSet = false;
-                    }
-                    Log.i(TAG, "onresponse returned " + firstResultPoint.toString());
-                } else {
-                    Log.e(TAG, "no results were found.");
-                }
-            }
-
-            @Override
-            public void onFailure(Call<GeocodingResponse> call, Throwable t) {
-                // print stack trace
-                t.printStackTrace();
-            }
-        });
+    @Override
+    public void onDestinationConverted(Point point) {
+        destination = point;
+        if (destination != null) {
+            createRouteFromPoints();
+        }
     }
 
     //// ---------- create route from Points---------- ////
 
     private void createRouteFromPoints() {
-        Log.i(TAG, origin.toString() + " : " + destination.toString());
 
-        // build Directions request
-        MapboxDirections mapboxDirectionsClient = MapboxDirections.builder()
-                .origin(origin)
-                .destination(destination)
-                .overview(DirectionsCriteria.OVERVIEW_FULL)
-                .profile(DirectionsCriteria.PROFILE_DRIVING)
-                .accessToken("pk.eyJ1IjoidWJsYSIsImEiOiJjanF6dHJvd3EwaTdpNDNvMDlydHRzOHVhIn0.yf8AdRE2gR9NH80fSYZjBA")
-                .build();
+        // start AsyncTask to retrieve route
+        CreateRouteAsyncTask createRouteAsyncTask =
+                new CreateRouteAsyncTask(this, origin, destination);
+        createRouteAsyncTask.execute();
+    }
 
-        // send request and handling response
-        mapboxDirectionsClient.enqueueCall(new Callback<DirectionsResponse>() {
-            @Override
-            public void onResponse(Call<DirectionsResponse> call, Response<DirectionsResponse> response) {
-                if (response.body() == null) {
-                    Log.e(TAG, "no routes found, something is wrong (response.body == null).");
-                } else if (response.body().routes().size() < 1) {
-                    Log.e(TAG, "no routes found.");
-                }
-
-                // retrive route from response
-                currentRoute = response.body().routes().get(0);
-
-                drawRoute();
-            }
-
-            @Override
-            public void onFailure(Call<DirectionsResponse> call, Throwable t) {
-                t.printStackTrace();
-            }
-        });
+    @Override
+    public void onRouteCreated(DirectionsRoute directionsRoute) {
+        directionsRoute = directionsRoute;
     }
 
     //// ---------- draw route---------- ////
