@@ -4,6 +4,7 @@ import android.annotation.SuppressLint;
 import android.support.annotation.NonNull;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.telephony.gsm.GsmCellLocation;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
@@ -16,6 +17,8 @@ import com.mapbox.api.directions.v5.MapboxDirections;
 import com.mapbox.api.directions.v5.models.DirectionsResponse;
 import com.mapbox.api.directions.v5.models.DirectionsRoute;
 import com.mapbox.geojson.Feature;
+import com.mapbox.geojson.FeatureCollection;
+import com.mapbox.geojson.GeoJson;
 import com.mapbox.geojson.LineString;
 import com.mapbox.geojson.Point;
 import com.mapbox.mapboxsdk.Mapbox;
@@ -26,6 +29,7 @@ import com.mapbox.mapboxsdk.maps.MapView;
 import com.mapbox.mapboxsdk.maps.MapboxMap;
 import com.mapbox.mapboxsdk.maps.OnMapReadyCallback;
 import com.mapbox.mapboxsdk.maps.Style;
+import com.mapbox.mapboxsdk.plugins.annotation.LineManager;
 import com.mapbox.services.android.navigation.v5.navigation.MapboxNavigation;
 
 import java.util.List;
@@ -91,8 +95,8 @@ public class MainActivity extends AppCompatActivity implements
         mapView.getMapAsync(this);
 
         // customize the map for Routes
-        initSource();
-        initLayer();
+        // initSource();
+        // initLayer();
 
         // set up UI elements
         startRouteButton = (Button) findViewById(R.id.startRouteButton);
@@ -258,22 +262,24 @@ public class MainActivity extends AppCompatActivity implements
 
     @Override
     public void onRouteCreated(DirectionsRoute directionsRoute) {
-        directionsRoute = directionsRoute;
+        currentRoute = directionsRoute;
+        drawRoute();
     }
 
     //// ---------- draw route---------- ////
 
     private void drawRoute() {
-        directionsRouteFeature = Feature.fromGeometry(LineString.fromPolyline(currentRoute.geometry(), PRECISION_6));
-        Log.i(TAG, isOriginSet.toString() + " " + isDestinationSet + " " + currentRoute.toString());
-    }
+        //directionsRouteFeature = Feature.fromGeometry(LineString.fromPolyline(currentRoute.geometry(), PRECISION_6));
+        // Log.i(TAG, isOriginSet.toString() + " " + isDestinationSet + " " + currentRoute.toString());+
 
-    private void initSource() {
+        LineManager lineManager = new LineManager(mapView, mapboxMap, mapboxMap.getStyle());
 
-    }
+        Log.i(TAG, currentRoute.geometry());
 
-    private void initLayer() {
+        FeatureCollection featureCollection = FeatureCollection.fromJson((String) currentRoute.geometry());
 
+        lineManager.create(featureCollection);
+        Log.i(TAG, "Line has been created.");
     }
 
     @Override

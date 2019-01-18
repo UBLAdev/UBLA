@@ -24,6 +24,7 @@ public class CreateRouteAsyncTask extends AsyncTask<Point, Void, Void> {
         this.listener = listener;
         this.origin = origin;
         this.destination = destination;
+        Log.i(TAG, "constructor returned.");
     }
 
     @Override
